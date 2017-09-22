@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jun 20 21:28:01 2017
+
+@author: jzhng105
+"""
+import re
+import pandas as pd
+import csv
+import requests
+import urllib
+from lxml import html    
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from docx import Document  
+import datetime
+import pickle
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException
+
+
+driver = webdriver.Chrome(executable_path="/usr/local/chromedriver") 
+#driver.get("http://www.indeed.ca")
+#pickle.dump( driver.get_cookies() , open("cookies.pkl","wb"))
+#driver.get("http://www.indeed.ca")
+#cookies = pickle.load(open("cookies.pkl", "rb"))
+#for cookie in cookies:
+#    driver.add_cookie(cookie)
+jobposting = []
+#document = Document('/Desktop/Cover_letter_Juntao_Zhang.docx')
+def generate_coverletter(key_message1, key_message2, key_message3, today):
+    #document = Document('/Desktop/Cover_letter_Juntao_Zhang.docx')
+    #key_message = {"Zurich":key_message1,"Toronto":key_message2, "Actuarial":key_message3}
+    key_message = (("Zurich",key_message1),("Toronto",key_message2),("Actuarial",key_message3), ("Today",today))
+    with open('Desktop/sample_coverletter.txt', 'r', encoding="latin-1") as infile, open('Desktop/indeed_coverletter{0}.txt'.format(key_message1), 'w', encoding="latin-1") as outfile:
+        for line in infile:
+            #dict.items() in python 3, dict.iteritems()in python 2
+            for src, target in key_message:
+                line = line.replace(src, target)
+            outfile.write(line)
+    #for paragraph in document.paragraphs:
+    #if 'Toronto' in paragraph.text:
+    #    document = replace(document, )
+def findjobposting(keyword1, keyword2, keyword3, keyword4):
+    page = requests.get("https://www.indeed.ca/jobs?q={0}+{1}&l={2}&start={3}".format(keyword1, keyword2, keyword3, keyword4))
+    bs = BeautifulSoup(page.content)
+    joblist_outside = []
+    joblist_indeed = []
+    #url = bs.find_all(href=re.compile("/pagead/clk?.*"))
+    #print(url)
+    for link in bs.findAll('a'):
+        for url in re.findall('/pagead/clk?.*', str(link.get("href"))):
+            if url:
+            #print("https://www.indeed.ca{0}".format(''.join(url)))
+                joblist_outside.append(("https://www.indeed.ca{0}".format(''.join(url))))
+        for url in re.findall('/company.*', str(link.get("href"))):
+            #exclude empty list
+            if url:
+                joblist_indeed.append(("https://www.indeed.ca{0}".format(''.join(url))))
+    #only return websites of indeed
+    return(joblist_indeed)
+        #print(link.get("href"))
+        #if link.get("href")==re.compile("/pagead/clk?.*"):
+            #print(link.get("href"))
+            #print(link)
+        #print(link.get('class'))
+        #if link.get('class') == "turnstileLink":
+            #print(link)
+            #print(link.get("href"))
+def clickonlink(keyword):
+    driver.get("https://www.indeed.ca/jobs?q={0}&l=canada".format(keyword))
+    element = driver.find_element_by_link_text(".*{0}.*".format(keyword))
+    element.click()
+
+def getjobinfo(website):
+    scrapeddata = requests.get(website)
+    tree = html.fromstring(scrapeddata.content)
+    data1 = tree.xpath('//title/text()')
+    data_str = "-".join(data1)
+    data_tuple = data_str.split("-")
+    print(len(data_tuple))
+    #in case there are 4 string in a list
+    if len(data_tuple) <=3:
+        data_tuple[0] = data_tuple[0].split("job", 1)[0]
+        data_tuple[1] = data_tuple[1].lstrip()
+        data_tuple[2] = (data_tuple[2].lstrip()).split("|", 1)[0]
+    else:
+        data_tuple[0] = data_tuple[0]+"&" + data_tuple[1]
+        data_tuple.remove(data_tuple[1])
+        data_tuple[0] = data_tuple[0].split("job", 1)[0]
+        data_tuple[1] = data_tuple[1].lstrip()
+        data_tuple[2] = (data_tuple[2].lstrip()).split("|", 1)[0]
+    print(data_tuple)
+    #for i in range(0, len(data_tuple)):
+    #    data.append(data_tuple[i])
+    return(data_tuple);
+def checkqualification(website):
+    searched_word = "years"
+    #website = urllib.request.urlopen(website).read().decode('utf-8')
+    #print(website)
+    #print(website.find("years"))
+    scrapeddata= requests.get(website).text
+    #print(scrapeddata)
+    #print(re.findall("years",scrapeddata))
+    #print(scrapeddata.find("years"))
+    bs = BeautifulSoup(scrapeddata)
+    results = bs.body.find_all(string=re.compile('.*{0}.*'.format(searched_word)), recursive=True)
+    number = re.search(r"\d+(\.\d+)?", str(results))
+    if number:
+        num = int(number.group(0))
+        if num <= 3:
+            return("applicable")
+        else:
+            return("Not applicable")
+        print(num)
+    else:
+         return("applicable")
+    ######scrape data by header########
+    #for link in bs.find_all('li'):
+    #    print(str(link).strip())
+    #    if str(link).strip().find("years")== 1:
+    #        print("experience required");
+    #if bs.body.findAll(text=re.compile('^years$')) == []:
+    #    print("apply for the job");
+    ######Scrape data in span########
+    #y = bs.find('span')
+    #for a in y.childGenerator(): 
+    #    print(type(a), str(a))
+#clickonlink("financial")
+jobposting = findjobposting("financial", "analyst", "canada", "21")
+print(jobposting)     
+N = len(jobposting)
+#Df's row starts from 0 to n-1
+matrix = pd.DataFrame()
+for i in range(0,N):
+    if checkqualification(jobposting[i]) == "applicable":
+        matrix = matrix.append(getjobinfo(jobposting[i]))
+        matrix = matrix.append(checkqualification(jobposting[i]).split())
+    else:
+        N = N - 1
+    #matrix = matrix.append(checkqualification(jobposting[i]))
+matrix.index = range(4*N)
+print(matrix)
+today = datetime.datetime.today().strftime('%b %d %Y')
+for i in range(0,N):
+    generate_coverletter(matrix[0][i*4+1],matrix[0][i*4+2],matrix[0][i*4+0],today)
+    
+for i in range(0,len(jobposting)):
+    key_message1 = matrix[0][i*4+1]
+    driver = driver = webdriver.Chrome(executable_path="/usr/local/chromedriver") 
+    driver.get("https://secure.indeed.com/account/login?service=my&hl=en_CA&co=CA&continue=https%3A%2F%2Fwww.indeed.ca%2F")
+    element_name = driver.find_element_by_id('signin_email')
+    element_name.send_keys("sample_email");
+    element_password = driver.find_element_by_id('signin_password')
+    element_password.send_keys("sample_password");
+    element_submit = driver.find_element(By.XPATH, '//button[text()="Sign In"]')
+    element_submit.click()
+    driver.get(jobposting[i])
+    try:
+        elem = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.XPATH, '//button[text()="Apply Now"]')))
+        print("Page is ready!")
+    except TimeoutException:
+        print("Loading took too much time!")
+    element_apply = driver.find_element_by_class_name("indeed-apply-button")
+    element_apply.click()
+    #nested iframe, different approach
+    #driver.implicitly_wait(10) 
+    """
+    driver.switch_to_frame(driver.find_element_by_id("indeed-apply-iframe"))
+    driver.switch_to.frame(driver.find_elements_by_xpath(xpath = "//iframe[name$=modal-iframe]");
+    try:
+    frame = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "iframe[name$=modal-iframe]")))
+    """
+    
+    wait = WebDriverWait(driver, 10)
+    frame = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "iframe[name$=indeedapply-modal-preload-iframe]")))
+    driver.switch_to.frame(frame)
+    wait.until(EC.frame_to_be_available_and_switch_to_it(0))
+    """
+        print("Page is ready!")
+    except TimeoutException:
+        print("Loading took too much time!")
+    driver.switch_to_frame(0)
+    driver.switch_to_frame(0)
+    driver.switch_to.frame(frame)
+    driver.switch_to.frame(0)
+    """
+    #driver.switch_to.frame(driver.find_element_by_id("indeed-apply-iframe"))
+    #try:
+    #    elem = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.ID, "applicant.applicationMessage")))
+    #    print("Page is ready!")
+    #except TimeoutException:
+    #    print("Loading took too much time!")
+    element_coverletter = driver.find_element_by_name("applicant.applicationMessage")
+    with open('Desktop/indeed_coverletter{0}.txt'.format(key_message1), 'r', encoding="latin-1") as infile:
+        for line in infile:
+            element_coverletter.send_keys(line.replace("Õ","'"))
+    element_continue = driver.find_element_by_class_name("button_inner")
+    element_continue.click()
+    
+matrix.to_csv("Joblisting.csv")
+
